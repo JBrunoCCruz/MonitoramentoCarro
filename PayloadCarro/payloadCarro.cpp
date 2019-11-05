@@ -1,6 +1,7 @@
 /**
  * payloadCarro.cpp       v0.0        08-10-2019 
  *
+ * Orientador: Elias Teodoro da Silva Junior
  * Autores: Felipe Moura de Castro e Joao Bruno Costa Cruz,
  * Instituto Federal de Educação, Ciência e Tecnologia do Ceará (IFCE) - Campus Fortaleza
  *
@@ -75,3 +76,28 @@ uint8_t PayLoadCarro::addRTC (uint8_t dia, uint8_t mes, uint16_t ano, uint8_t ho
     dados[18] = segundo;
     return 0; 
 }
+
+uint8_t PayLoadCarro::addGPSData (uint8_t dia, uint8_t mes, uint16_t ano, uint8_t hora, uint8_t minuto, uint8_t segundo) {
+    dados[12] = ano / 100;
+    dados[13] = (ano - (dados[12] * 100) ); //Divide o ano em duas partes. Ex: 2019 -> 20 | 19
+    dados[14] = mes;
+    dados[15] = dia;
+    dados[16] = hora;
+    dados[17] = minuto;
+    dados[18] = segundo;
+    return 0; 
+}
+
+uint8_t PayLoadCarro::addGPS (double Latitude, double Longitude, double Velocidade) {
+	dados[19] = 46 + (Latitude / fabs (Latitude) ); //sinal, '-' em Hexadecimal = 0x2D (45)
+    dados[20] = fabs (Latitude);
+	dados[21] = (fabs (Latitude) - dados[20] ) * 100;
+    dados[22] = 46 + (Longitude / fabs (Longitude) ); //sinal, '-' em Hexadecimal = 0x2D (45)
+	dados[23] = fabs (Longitude);
+	dados[24] = (fabs (Longitude) - dados[23] ) * 100;
+    dados[25] = 46 + (Velocidade / fabs (Velocidade) ); //sinal, '-' em Hexadecimal = 0x2D (45)
+	dados[26] = fabs (Velocidade);
+	dados[27] = (fabs (Velocidade) - dados[26] ) * 100;
+	return 0; 
+}
+

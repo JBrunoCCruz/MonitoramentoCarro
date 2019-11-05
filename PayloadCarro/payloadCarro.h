@@ -1,6 +1,7 @@
 /**
  * payloadCarro.h       v0.0        08-10-2019 
  *
+ * Orientador: Elias Teodoro da Silva Junior
  * Autores: Felipe Moura de Castro e Joao Bruno Costa Cruz,
  * Instituto Federal de Educação, Ciência e Tecnologia do Ceará (IFCE) - Campus Fortaleza
  *
@@ -14,14 +15,13 @@
 /** 
  *----------------------------------------------------------------------------------------------------------------------
  * No projeto, tinha-se a ideia de adicionar os seguintes
- * dados posteriormente:
+ * dados posteriormente (obtidos via rede CAN de um carro):
  * 
  * Velocidade - 1 float
  * Rotacao - 1 float
  * Temperatura da agua - 1 float
  * Posicao da borboleta	- 1 float
  * Pressao do coletor de admissao - 1 float  
- * GPS - ? bytes
  *----------------------------------------------------------------------------------------------------------------------
  */
 
@@ -37,8 +37,7 @@
 
 #include "mbed.h"
  
-#define CONSTANTE_MULTIPLICADOR 1000
-#define QUANTIDADE_DE_DADOS 19
+#define QUANTIDADE_DE_DADOS 28
 
 /**
  *----------------------------------------------------------------------------------------------------------------------
@@ -110,7 +109,48 @@ class PayLoadCarro {
         *                                ao buffer de envio ('dados[]')
         *----------------------------------------------------------------------------------------------------------------------
         */
-		uint8_t addRTC (uint8_t dia, uint8_t mes, uint16_t ano, uint8_t hora, uint8_t minuto, uint8_t segundo);		
+		uint8_t addRTC (uint8_t dia, uint8_t mes, uint16_t ano, uint8_t hora, uint8_t minuto, uint8_t segundo);
+
+        /**
+        *----------------------------------------------------------------------------------------------------------------------
+        * Adiciona os dados de um GPS ao buffer de envio
+        *
+        * Latitude, Longitude e Velocidade são passados como parametros para a função 
+        * A precisão é de duas casas decimais, o programador pode 
+        * ficar a vontade para aumentar essa quantidade tomando 
+        * cuidado para não exceder o tamanho do buffer (64 bytes).    
+        *
+        * @param Longitude                    Longitude
+        * @param Latitude                     Latitude
+        * @param Velocidade                   Velocidade
+        *
+        * @return                      Não retorna nada, apenas
+        *                              adiciona os valores de Longitude, Latitude e Velocidade
+        *                              ao buffer de envio ('dados[]')
+        *----------------------------------------------------------------------------------------------------------------------
+        */
+		uint8_t addGPS (double Latitude, double Longitude, double Velocidade);		
+
+        /**
+        *----------------------------------------------------------------------------------------------------------------------
+        * Adiciona os dados de um calenderio e relogio, oriundos de um GPS, ao buffer
+        *
+        * Os dados de um calendario e de relogio são passados como parametros
+        * para serem adicionados ao buffer de envio.
+        *        
+        * @param dia                     Dia do ano [01..31]
+        * @param mes                     Mes do ano [Jan..Dez]
+        * @param ano                     Ano        [2000..2099]
+        * @param hora                    Formato escolhido de acordo com a necessidade [12h - 24h]
+        * @param minuto                  Minutos    [0..59]
+        * @param segundo                 Segundos   [0..59]
+        *
+        * @return                        Não retorna nada, apenas
+        *                                adiciona os valores de tempo
+        *                                ao buffer de envio ('dados[]')
+        *----------------------------------------------------------------------------------------------------------------------
+        */
+        uint8_t addGPSData (uint8_t dia, uint8_t mes, uint16_t ano, uint8_t hora, uint8_t minuto, uint8_t segundo);
 
     public:
         /**
@@ -120,6 +160,9 @@ class PayLoadCarro {
         * acelerometro - bytes 0 a 8
         * temperatura  - bytes 9 a 11
         * relogio      - bytes 12 a 18
+        * Latitude      - bytes 19 a 21
+        * Longitude      - bytes 22 a 24
+        * Velocidade      - bytes 25 a 27
         *----------------------------------------------------------------------------------------------------------------------
         */
         uint8_t dados[QUANTIDADE_DE_DADOS];

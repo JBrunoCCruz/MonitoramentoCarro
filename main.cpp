@@ -1,6 +1,7 @@
 /**
  * carro.cpp       v0.0        08-10-2019 
  *
+ * Orientador: Elias Teodoro da Silva Junior
  * Autores: Felipe Moura de Castro e Joao Bruno Costa Cruz,
  * Instituto Federal de Educação, Ciência e Tecnologia do Ceará (IFCE) - Campus Fortaleza
  *
@@ -114,6 +115,7 @@
 #include "FATFileSystem.h"
 #include <stdio.h>
 #include <errno.h>
+#include "GPS_Carro/GPS_Carro.h"
 
 #define TX_INTERVAL         60000
 
@@ -124,9 +126,25 @@
  */
 
 /**
+ * Struct para armazenar os dados do GPS
+ * Declaração da Thread GPS
+ * Declaração do Semaforo para acessar o GPS (Semaforo utilizado para garantir a atomicidade dos dados)
+ */
+dataGPS dadosDoGPS;
+Thread thread_gps;
+Semaphore semaforo_acessar_gps (1);
+
+/**
  * Objeto buffer de envio LoRa
  */
 PayLoadCarro payloader;
+
+/**
+ *----------------------------------------------------------------------------------------------------------------------
+ * Objeto para aquisição do GPS
+ *----------------------------------------------------------------------------------------------------------------------
+ */
+Serial gps (PA_15, PB_7); /* TX, RX */
 
 /**
  *----------------------------------------------------------------------------------------------------------------------
@@ -162,6 +180,7 @@ RtcDs1307 gRtc ( gI2c );
  *----------------------------------------------------------------------------------------------------------------------
  */
 Thread thread_cartao;
+
 /** 
  *----------------------------------------------------------------------------------------------------------------------
  * Dispositivo de bloco padrão do sistema
@@ -182,6 +201,9 @@ FATFileSystem fs ("fs");
 static uint8_t LORAWAN_DEV_EUI[] = { 0x00, 0x2E, 0x92, 0x89, 0xE3, 0xEB, 0xD0, 0xD1 };
 static uint8_t LORAWAN_APP_EUI[] = { 0x70, 0xB3, 0xD5, 0x7E, 0xD0, 0x02, 0x25, 0xB8 };
 static uint8_t LORAWAN_APP_KEY[] = { 0xA3, 0xCB, 0x37, 0x09, 0xB1, 0x69, 0xA9, 0x8D, 0x77, 0xE3, 0x6C, 0x6F, 0xDE, 0x7B, 0x67, 0x31 };
+//static uint8_t LORAWAN_DEV_EUI[] = { 0x00, 0x4B, 0x39, 0xDE, 0x54, 0xD9, 0x37, 0x56 };
+//static uint8_t LORAWAN_APP_EUI[] = { 0x70, 0xB3, 0xD5, 0x7E, 0xD0, 0x02, 0x20, 0x53 };
+//static uint8_t LORAWAN_APP_KEY[] = { 0xB6, 0xCC, 0xE5, 0xE6, 0x70, 0x24, 0xA8, 0x40, 0xE5, 0x9A, 0x51, 0x19, 0x3F, 0xD1, 0x2B, 0x80 };
 
 
 /**
@@ -200,7 +222,11 @@ static void lora_event_handler (lorawan_event_t event);
 static LoRaWANInterface lorawan (radio);
 static lorawan_app_callbacks_t callbacks;
 
-// Protótipos das funções
+
+//------------------------------------------------------------------------------------------------------------------
+//-- Protótipos das funções
+//------------------------------------------------------------------------------------------------------------------
+
 /**
  *----------------------------------------------------------------------------------------------------------------------
  * Thread para gravar no cartão a cada intervalo de tempo predefinido, no nosso caso
@@ -292,6 +318,23 @@ static void receive_message ();
  */
 static void lora_event_handler (lorawan_event_t event);
 
+/**
+ *----------------------------------------------------------------------------------------------------------------------
+ * Adquire constantemente os dados fornecidos por um GPS
+ *
+ * Os dados adquiridos são armazenados em uma estrutura do tipo: dataGPS
+ *
+ * Estrtura definida em GPS_Carro.h
+ *   
+ * Utiliza-se um semaforo na tentativa de manter a atomicidade dos dados
+ *----------------------------------------------------------------------------------------------------------------------
+ */
+void adquirirDadosDoGPS ();
+
+//------------------------------------------------------------------------------------------------------------------
+//-- FIM - Protótipos das funções
+//------------------------------------------------------------------------------------------------------------------
+
 
 /**
  *----------------------------------------------------------------------------------------------------------------------
@@ -306,6 +349,8 @@ static void lora_event_handler (lorawan_event_t event);
  *----------------------------------------------------------------------------------------------------------------------
  */
 int main (void) {
+    //Configurações de comunicação com o modulo do GPS
+    gps.baud (9600);
   
     mbed_trace_init ();
     
@@ -360,19 +405,24 @@ int main (void) {
     retcode = lorawan.connect (connect_params);
 
     if (retcode == LORAWAN_STATUS_OK || retcode == LORAWAN_STATUS_CONNECT_IN_PROGRESS) {
-        printf("Connection - In Progress ...\r\n");
+        printf ("Connection - In Progress ...\r\n");
     } else {
         printf ("Connection error, code = %d \r\n", retcode);
         return -1;
     }
 
     //------------------------------------------------------------------------------------------------------------------
-    //-- PASSO 6: Inicialização do Fluxo de Controle da gravação no cartão
+    //-- PASSO 6: Inicialização do Fluxo de Controle de aquisição dos dados do GPS
+    //------------------------------------------------------------------------------------------------------------------
+    thread_gps.start (adquirirDadosDoGPS);
+
+    //------------------------------------------------------------------------------------------------------------------
+    //-- PASSO 7: Inicialização do Fluxo de Controle da gravação no cartão
     //------------------------------------------------------------------------------------------------------------------
     thread_cartao.start (escrever_no_arquivo);
 
     //------------------------------------------------------------------------------------------------------------------
-    //-- PASSO 7: make your event queue dispatching events forever
+    //-- PASSO 8: Faz o manipulador de eventos disparar para sempre
     //------------------------------------------------------------------------------------------------------------------    
     ev_queue.dispatch_forever ();
 }
@@ -387,22 +437,23 @@ void escrever_no_arquivo () {
     /**
      * Perifericos
      *
-     * Acelerometro, Sendor de temperatura, Calendario e tempo
+     * Acelerometro, Sendor de temperatura, Calendario, Tempo e GPS
      *
      */    
     float acce[3], temperatura;
-    DateTime dt;
+    //DateTime dt;
 
     //Montagem do sistema em blocos
     int err = fs.mount (bd);
         
-    if (err) {
+    while (err != 0) {
         // Reformata se não conseguir montar o sistema de blocos       
         err = fs.reformat (bd);    
         if (err) {
             // Desmonta o sistema blocos se falhar novamente  
-            fs.unmount ();         
+            fs.unmount ();      
         }
+        wait (1);
     }
 
     /**
@@ -414,12 +465,16 @@ void escrever_no_arquivo () {
     f = fopen ("/fs/dados.csv", "r");    
     if (!f) {                           
         f = fopen ("/fs/dados.csv", "w");    
-        if (!f) {
-            fclose (f);        
-        } else {
-            // Nome das labels
-            fprintf (f, "Ace 1;Ace 2;Ace 3;Temp;Ano;Mes;Dia;Hora;Min;Seg\r\n");            
-        }        
+        while (!f) {
+            f = fopen ("/fs/dados.csv", "w");
+            wait (1);
+        } 
+        // Nome das labels
+        err = fprintf (f, "Ace 1;Ace 2;Ace 3;Temp;Lat;Long;Data;Velc\r\n");
+        while (err) {
+            err = fprintf (f, "Ace 1;Ace 2;Ace 3;Temp;Lat;Long;Data;Velc\r\n");
+            wait (1);
+        }
         // Fecha o arquivo para liberar qualquer gravação no buffer    
         fclose (f);        
         // Desmonta o sistema de blocos   
@@ -431,46 +486,86 @@ void escrever_no_arquivo () {
         fs.unmount ();
     }
                 
-    //LOOP
+    //LOOP --------------------------------------------------------------------------------
     while (1) {
 
-        printf ("Gravando no cartao\r\n");
         // Try to mount the filesystem
         err = fs.mount (bd);
         
         if (err) {
+            wait_ms (500);                    
             // Reformat if we can't mount the filesystem
-            // this should only happen on the first boot        
+            // this should only happen on the first boot
             err = fs.reformat (bd);    
             if (err) {
                 fs.unmount ();
+                wait (1);
                 continue;            
             }
         }
+
+        //printf ("Gravando no cartao\r\n");
 
         // Open the numbers file    
         FILE *f;
         f = fopen ("/fs/dados.csv", "a+");    
         if (!f) {
-            fclose (f);
-            continue;        
+            wait_ms (500);
+            f = fopen ("/fs/dados.csv", "a+"); 
+            if (!f) {
+                fclose (f);
+                fs.unmount ();
+                wait (1);
+                continue;        
+            }
         }
             
         // Lendo os dados dos perifericos
         ark.getAccelero (acce);                    
-        temperatura = ark.getTemp ();    
-        dt = gRtc.now ();
-                
-        // Gravação dos dados no arquivo (41 bytes)
-        err = fprintf (f, "%.2f;%.2f;%.2f;%.2f;%u;%u;%u;%u;%u;%u\r\n", 
+        temperatura = ark.getTemp ();            
+        
+        //Escrevendo_no_arquivo
+        if (dadosDoGPS.latitude != 0.0) {
+            semaforo_acessar_gps.acquire ();
+            err = fprintf (f, "%.2f;%.2f;%.2f;%.2f;%.4lf;%.4lf;%s;%.4lf\r\n", 
                         acce[0], acce[1], acce[2],
-                        temperatura,
-                        dt.year (), dt.month (), dt.day (), dt.hour (), dt.minute (), dt.second () );
-                 
+                        temperatura, 
+                        dadosDoGPS.latitude, dadosDoGPS.longitude,
+                        dadosDoGPS.date,
+                        dadosDoGPS.speed);
+            semaforo_acessar_gps.release ();
+            if (err) {
+                wait_ms (500);
+                semaforo_acessar_gps.acquire ();        
+                err = fprintf (f, "%.2f;%.2f;%.2f;%.2f;%.4lf;%.4lf;%s;%.4lf\r\n", 
+                        acce[0], acce[1], acce[2],
+                        temperatura, 
+                        dadosDoGPS.latitude, dadosDoGPS.longitude,
+                        dadosDoGPS.date,
+                        dadosDoGPS.speed);
+                semaforo_acessar_gps.release ();
+                if (err) {
+                    fclose (f);
+                    fs.unmount ();
+                    wait (1);
+                    continue; 
+                }        
+            }
+            semaforo_acessar_gps.acquire ();
+            printf ("A1: %.2f; A2: %.2f; A3: %.2f; Temp: %.2f; Lat: %lf; Long: %lf; Vel: %lf; Dat: %s; Tempo: %.0lf\r\n\n", 
+                    acce[0], acce[1], acce[2],
+                    temperatura,
+                    dadosDoGPS.latitude, dadosDoGPS.longitude,
+                    dadosDoGPS.speed,
+                    dadosDoGPS.date,
+                    dadosDoGPS.time);
+            semaforo_acessar_gps.release ();    
+        } 
+
         // Close the file which also flushes any cached writes    
-        fclose(f);        
+        fclose (f);        
         // Tidy up    
-        fs.unmount();
+        fs.unmount ();
         //Espera por 1000 ms (gravação a cada 1 segundo aproximadamente)
         wait_ms (1000);
     }    
@@ -513,18 +608,23 @@ static void LoRa_send_message () {
         * Código de retorno LoRa 
         *
         */ 
-        DateTime dt;
+        //DateTime dt;
         float acce[3];
         float temperatura;
         int16_t retcode;            
         
         ark.getAccelero (acce);
         temperatura = ark.getTemp ();
-        dt = gRtc.now ();        
+        //dt = gRtc.now ();        
 
         payloader.addAccelerometer (acce[0], acce[1], acce[2]);                
-        payloader.addTemperature (temperatura);        
-        payloader.addRTC (dt.day (), dt.month (), dt.year (), dt.hour (), dt.minute (), dt.second () );
+        payloader.addTemperature (temperatura);
+        semaforo_acessar_gps.acquire ();
+        //if (dadosDoGPS.valid == 'A')
+            payloader.addGPS (dadosDoGPS.latitude, dadosDoGPS.longitude, dadosDoGPS.speed);
+        printf ("Latitude: %.2lf / Longitude: %.2lf / Velocidade: %.2lf\r\n", dadosDoGPS.latitude, dadosDoGPS.longitude, dadosDoGPS.speed);
+        semaforo_acessar_gps.release ();
+        //payloader.addGPSData(uint8_t dia, uint8_t mes, uint16_t ano, uint8_t hora, uint8_t minuto, uint8_t segundo);
 
         // Envia os dados para o servidor
         retcode = lorawan.send (15, payloader.dados, payloader.tamanho, MSG_UNCONFIRMED_FLAG);
@@ -540,8 +640,7 @@ static void LoRa_send_message () {
  * Recebe mensagem do servidor da rede
  *----------------------------------------------------------------------------------------------------------------------
  */
-static void receive_message ()
-{
+static void receive_message () {
     uint8_t rx_buffer[50] = { 0 };
     int16_t retcode = lorawan.receive (15, rx_buffer,
                                       sizeof (rx_buffer),
@@ -564,8 +663,7 @@ static void receive_message ()
  * Manipulador de eventos
  *----------------------------------------------------------------------------------------------------------------------
  */
-static void lora_event_handler (lorawan_event_t event)
-{
+static void lora_event_handler (lorawan_event_t event) {
     switch (event) {
         case CONNECTED:
             printf ("Connection - Successful \r\n");                  
@@ -605,5 +703,33 @@ static void lora_event_handler (lorawan_event_t event)
             break;
         default:
             MBED_ASSERT ("Unknown Event");
+    }
+}
+
+/**
+ *----------------------------------------------------------------------------------------------------------------------
+ * Adquire dados do GPS
+ *----------------------------------------------------------------------------------------------------------------------
+ */
+void adquirirDadosDoGPS () {
+    char c;
+    char cDataBuffer[500];
+    while (true) {
+        if (gps.readable ()) {
+            if (gps.getc () == '$') { // Espera um $ (Identifica o inicio de um mensagem)
+                for (int i = 0; i < sizeof (cDataBuffer); i++) {
+                    c = gps.getc();
+                    if (c == '\r' ) {
+                        semaforo_acessar_gps.acquire ();
+                        parse (cDataBuffer, i, &dadosDoGPS);
+                        semaforo_acessar_gps.release ();
+                        i = sizeof (cDataBuffer);
+                        
+                    } else {
+                        cDataBuffer[i] = c;
+                    }                
+                }
+            } 
+        }
     }
 }

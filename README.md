@@ -29,6 +29,9 @@ https://os.mbed.com/studio/
 <p>Controlar através da velocidade e trepidação, se os motoristas estão passando em alta velocidade por buracos ou lombadas, podendo dessa forma avariar os veículos da empresa.</p>
 <p>Muito mais pode ser feito, vai depender da criatividade. :)</p>
 
+![carro](https://user-images.githubusercontent.com/51264248/68383828-28586e80-0135-11ea-812f-3dbc1efe79fc.jpg)
+
+
 ## Configuração para Desenvolvimento
 
 <p>Toda a aplicação pode ser criada e programada utilizando-se o compilador online disponibilizado pela própria ARM (ARM Copyright © 2019 Arm Limited (or its affiliates) ). </p>

@@ -62,6 +62,8 @@ https://os.mbed.com/studio/
 <p>Esse modelo de Readme foi baseado no modelo disponível em: https://github.com/dbader/readme-template</p>
 <p>Pedimos desculpas caso ainda esteja faltando citação a alguma licença. Ainda estamos melhorando o repositório. Ao final esperamos que tudo esteja certo.</p>
 
+![LIT - IFCE](https://user-images.githubusercontent.com/51264248/68384078-9ac94e80-0135-11ea-979a-b23677465bea.png)
+
 ## Contribuindo
 
 <p>Ainda iremos criar formas para possíveis contribuições.</p>

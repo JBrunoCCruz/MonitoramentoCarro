@@ -4,6 +4,9 @@
 <p>A ideia do projeto é fazer o monitoramento remoto de um carro, utiliza-se dados de sensores externos ao carro como o acelerômetro e GPS. Os dados são gravados em um cartão Micro SD e também enviados para um servidor utilizando-se as tecnologias LoRa e LoRaWAN</p>
 <p>Em adição, tem-se a ideia de fazer esse controle com dados fornecidos pelo próprio carro via Rede CAN.</p>
 
+![Carro_Isometrica](https://user-images.githubusercontent.com/51264248/68385092-cfd6a080-0137-11ea-8c6b-b8eb40368ee3.jpg)
+
+
 ## Instalação
 
 Linux:

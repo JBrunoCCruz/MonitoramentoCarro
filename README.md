@@ -29,7 +29,7 @@ https://os.mbed.com/studio/
 <p>No nosso exemplo, o monitoramento realizado é bem simples. Apenas obtemos dados de localização, temperatura, aceleração, tempo (data e hora) e armazenamos esses dados em um cartão Micro SD ou armazenamos em um servidor na Web.</p>
 <p>Um outro exemplo de utilização, seria usar os dados do acelerômetro em conjunto com o giroscópio e tentar medir a qualidade asfáltica (pode ser um trabalho bem difífcil...).</p>
 <p>Um simples controle de localização de um veículo qualquer, para descobrir sua posição em tempo real ou armazenar a rota percorrida por um veículo durante um certo intervalo de tempo (carro, bicicleta, ou até mesmo uma pessoa...).</p>
-<p>Controlar através da velocidade e trepidação, se os motoristas estão passando em alta velocidade por buracos ou lombadas, podendo dessa forma avariar os veículos da empresa.</p>
+<p>Controlar através da velocidade e trepidação, se os motoristas estão passando em alta velocidade por buracos ou lombadas, podendo dessa forma verficiar se eles estão intencionalmente tentando avariar os veículos da empresa.</p>
 <p>Muito mais pode ser feito, vai depender da criatividade. :)</p>
 
 ![carro](https://user-images.githubusercontent.com/51264248/68383828-28586e80-0135-11ea-812f-3dbc1efe79fc.jpg)

@@ -24,10 +24,10 @@
 
 |Exemplo|-2.5          | | |
 |:-:|:----------------------------:|:------------------:|:--------------------:|
-|1  |-2/5 / abs(-2.5) = -1        |(fator somador)                            ||
-|2  |46 + (-1) = 45               |(numero é negativo)                        ||
-|3  |parte inteira|abs (-2.5) = 2                                             ||
-|4  |parte fracionaria            |(abs (-2.5) - 2 ) * 100 = 50               ||
-|5  |-|2|50|
-|6  |byte 0|byte 1|byte 2|
-|7  |sinal|inteira|fracionaria|
+|  |-2/5 / abs(-2.5) = -1        |(fator somador)                            ||
+|  |46 + (-1) = 45               |(numero é negativo)                        ||
+|  |parte inteira|abs (-2.5) = 2                                             ||
+|  |parte fracionaria            |(abs (-2.5) - 2 ) * 100 = 50               ||
+|  |-|2|50|
+|  |byte 0|byte 1|byte 2|
+|  |sinal|inteira|fracionaria|

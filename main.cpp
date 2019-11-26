@@ -117,6 +117,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include "GPS_Carro/GPS_Carro.h"
+#include <string.h>
 
 #define TX_INTERVAL         60000
 
@@ -125,6 +126,8 @@
  * VARIÁVEIS GLOBAIS, OBJETOS E PROTÓTIPOS DE FUNÇÕES
  *----------------------------------------------------------------------------------------------------------------------
  */
+
+ Serial pc(USBTX, USBRX);
 
 /**
  * Struct para armazenar os dados do GPS
@@ -205,6 +208,9 @@ static uint8_t LORAWAN_APP_KEY[] = { 0xA3, 0xCB, 0x37, 0x09, 0xB1, 0x69, 0xA9, 0
 //static uint8_t LORAWAN_DEV_EUI[] = { 0x00, 0x4B, 0x39, 0xDE, 0x54, 0xD9, 0x37, 0x56 };
 //static uint8_t LORAWAN_APP_EUI[] = { 0x70, 0xB3, 0xD5, 0x7E, 0xD0, 0x02, 0x20, 0x53 };
 //static uint8_t LORAWAN_APP_KEY[] = { 0xB6, 0xCC, 0xE5, 0xE6, 0x70, 0x24, 0xA8, 0x40, 0xE5, 0x9A, 0x51, 0x19, 0x3F, 0xD1, 0x2B, 0x80 };
+//static uint8_t LORAWAN_DEV_EUI[] = { 0x00, 0xED, 0x32, 0xB4, 0xF1, 0xD9, 0x33, 0x05 };
+//static uint8_t LORAWAN_APP_EUI[] = { 0x70, 0xB3, 0xD5, 0x7E, 0xD0, 0x02, 0x58, 0x41 };
+//static uint8_t LORAWAN_APP_KEY[] = { 0xEC, 0x90, 0x2B, 0x08, 0xC1, 0x25, 0x40, 0x7A, 0x78, 0xD9, 0xF9, 0x1A, 0xB4, 0x9C, 0x47, 0x0F };
 
 
 /**
@@ -227,6 +233,11 @@ static lorawan_app_callbacks_t callbacks;
 //------------------------------------------------------------------------------------------------------------------
 //-- Protótipos das funções
 //------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Controle de gravação no arquivo
+ */
+int controleDeGravacao (char *novoNomeDeArquivo); 
 
 /**
  *----------------------------------------------------------------------------------------------------------------------
@@ -330,7 +341,18 @@ static void lora_event_handler (lorawan_event_t event);
  * Utiliza-se um semaforo na tentativa de manter a atomicidade dos dados
  *----------------------------------------------------------------------------------------------------------------------
  */
-void adquirirDadosDoGPS ();
+void adquirirDadosDoGPS (void);
+
+/**
+ * Calibração
+ */
+DigitalOut ledPouco (PC_8);
+DigitalOut ledMedio (PC_6);
+DigitalOut ledOkay (PC_5);
+void calibracao (void);
+Thread thread_calibrador;
+Semaphore dadosMPU (1);
+
 
 //------------------------------------------------------------------------------------------------------------------
 //-- FIM - Protótipos das funções
@@ -412,20 +434,29 @@ int main (void) {
         return -1;
     }
 
-    //------------------------------------------------------------------------------------------------------------------
-    //-- PASSO 6: Inicialização do Fluxo de Controle de aquisição dos dados do GPS
-    //------------------------------------------------------------------------------------------------------------------
-    thread_gps.start (adquirirDadosDoGPS);
 
     //------------------------------------------------------------------------------------------------------------------
-    //-- PASSO 7: Inicialização do Fluxo de Controle da gravação no cartão
+    //-- PASSO 6: Inicialização do método de calibração do acelerometro
+    //------------------------------------------------------------------------------------------------------------------
+    thread_calibrador.start (calibracao);
+    wait (2);
+
+    //------------------------------------------------------------------------------------------------------------------
+    //-- PASSO 7: Inicialização do Fluxo de Controle de aquisição dos dados do GPS
+    //------------------------------------------------------------------------------------------------------------------
+    thread_gps.start (adquirirDadosDoGPS);
+    wait (3);
+
+    //------------------------------------------------------------------------------------------------------------------
+    //-- PASSO 8: Inicialização do Fluxo de Controle da gravação no cartão
     //------------------------------------------------------------------------------------------------------------------
     thread_cartao.start (escrever_no_arquivo);
 
     //------------------------------------------------------------------------------------------------------------------
-    //-- PASSO 8: Faz o manipulador de eventos disparar para sempre
+    //-- PASSO 9: Faz o manipulador de eventos disparar para sempre
     //------------------------------------------------------------------------------------------------------------------    
-    ev_queue.dispatch_forever ();
+    //ev_queue.dispatch_forever ();
+
 }
 
 
@@ -435,28 +466,59 @@ int main (void) {
  *----------------------------------------------------------------------------------------------------------------------
  */
 void escrever_no_arquivo () {
+    
+    //calibracao ();
+
+    //thread_gps.start (adquirirDadosDoGPS);
+
+    //wait (3);
+
+    printf ("Gravando no cartao\r\n");
+
     /**
      * Perifericos
      *
      * Acelerometro, Sensor de temperatura, Giroscópio, GPS e RTC (Temporariamente não utilizado)
      *
      */    
-    float acce[3], temperatura;
+    float acce[3], temperatura, gyro[3];
     //DateTime dt; Esse era o objeto para o RTC
 
     //Montagem do sistema em blocos
     int err = fs.mount (bd);
         
     while (err != 0) {
-        printf ("Aqui\r\n");
+        printf ("reformatando\r\n");
         // Reformata se não conseguir montar o sistema de blocos       
-        fs.reformat (bd);
+        //fs.reformat (bd);
         err = fs.mount (bd);    
-        if (err) {
-            // Desmonta o sistema blocos se falhar novamente  
-            fs.unmount ();      
-        }
+        wait (1);
     }
+
+    mkdir ("fs/dados", 1); //Pasta que contém os arquivos que contém os dados
+    mkdir ("fs/controle", 1); //Pasta que contém o arquivo de controle dos arquivos que contém os dados
+
+    //Cria um novo arquivo a cada dia ou a cada vez que o carro for ligado
+    
+    char novoNomeDeArquivo_2[9], *novoNomeDeArquivo;
+    novoNomeDeArquivo = novoNomeDeArquivo_2;
+
+    int verificacaoDoControleDeGravacao = 1;
+    do {
+        verificacaoDoControleDeGravacao = controleDeGravacao (novoNomeDeArquivo);
+    } while (verificacaoDoControleDeGravacao != 0);
+    
+    printf ("arquivo: %c%c%c%c%c%c%c%c\r\n", novoNomeDeArquivo[0], novoNomeDeArquivo[1],
+                                         novoNomeDeArquivo[2], novoNomeDeArquivo[3],
+                                         novoNomeDeArquivo[4], novoNomeDeArquivo[5],
+                                         novoNomeDeArquivo[6], novoNomeDeArquivo[7]);
+    novoNomeDeArquivo[8] = '\0';
+
+    char nomeArquivo[27] = "/fs/dados/";
+    char extensao[5] = ".csv";
+    strcat(nomeArquivo, novoNomeDeArquivo);
+    strcat(nomeArquivo, extensao);    
+    printf ("%s\r\n", nomeArquivo);
 
     /**
      * Verificando a existencia do arquivo   
@@ -464,61 +526,41 @@ void escrever_no_arquivo () {
      * Se não existir, cria o arquivo e nomeia as colunas
      */
     FILE *f;
-    f = fopen ("/fs/dados.csv", "r");    
+    f = fopen (nomeArquivo, "r");    
     if (!f) {                           
-        f = fopen ("/fs/dados.csv", "w");    
+        f = fopen (nomeArquivo, "w");  
         while (!f) {
-            f = fopen ("/fs/dados.csv", "w");
-            wait (1);
+            printf ("aqui - agora\r\n");
+            f = fopen (nomeArquivo, "w");
+            wait (2);
         } 
         // Nome das labels
-        err = fprintf (f, "Ace 1;Ace 2;Ace 3;Temperatura;Latitude;Longitude;Data;Hora;Velocidade km/h\r\n");
+        err = fprintf (f, "Ace 1;Ace 2;Ace 3;Gyro 1;Gyro 2;Gyro 3;Temperatura;Latitude;Longitude;Data;Hora;Velocidade\r\n");
         while (err < 0) {
-            err = fprintf (f, "Ace 1;Ace 2;Ace 3;Temperatura;Latitude;Longitude;Data;Hora;Velocidade km/h\r\n");
+            
+            err = fprintf (f, "Ace 1;Ace 2;Ace 3;Gyro 1;Gyro 2;Gyro 3;Temperatura;Latitude;Longitude;Data;Hora;Velocidade\r\n");
             wait (1);
+            printf ("Falha ao gravar. Cartão não encontrado ou memória cheia.\r\n");
         }
         // Fecha o arquivo para liberar qualquer gravação no buffer    
-        fclose (f);        
-        // Desmonta o sistema de blocos   
-        fs.unmount ();       
+        fclose (f);              
     } else {
         // Fecha o arquivo para liberar qualquer gravação no buffer
         fclose (f);        
-        // Desmonta o sistema de blocos  
-        fs.unmount ();
-    }
-                
+    }    
+
+
     //LOOP --------------------------------------------------------------------------------
     while (1) {
 
-        // Tenta montar o sistema de arquivos
-        err = fs.mount (bd);
-        
-        if (err) {
-            printf ("Erro 1 / erro: %d\r\n", err);
-            wait_ms (500);                    
-            // Reformata se não conseguir montar o sistema de arquivos
-            err = fs.mount (bd);    
-            if (err) {
-                printf ("Erro 2 / erro: %d\r\n", err);
-                fs.unmount ();
-                wait (1);
-                continue;            
-            }
-        }
-
-        printf ("Gravando no cartao\r\n");
-
         // Abrindo o arquivo para gravação   
-        FILE *f;
-        f = fopen ("/fs/dados.csv", "a+");    
+        f = fopen (nomeArquivo, "a+");    
         if (!f) {
-            wait_ms (500);
-            f = fopen ("/fs/dados.csv", "a+"); 
+            wait_ms (500);   
+            f = fopen (nomeArquivo, "a+"); 
             if (!f) {
-                printf ("erro!\r\n");
+                printf ("Erro 1 (Cartao nao encontrado)!\r\nColoque o cartao novamente e reinicie a placa.\r\n");
                 fclose (f);
-                fs.unmount ();
                 wait (1);
                 continue;        
             }
@@ -526,13 +568,15 @@ void escrever_no_arquivo () {
 
         // Lendo os dados dos perifericos
         ark.getAccelero (acce);                    
-        temperatura = ark.getTemp ();            
+        temperatura = ark.getTemp ();
+        ark.getGyro (gyro);
         
         //Escrevendo_no_arquivo
         if (dadosDoGPS.valid == 'A') {
             semaforo_acessar_gps.acquire ();
-            err = fprintf (f, "%.2f;%.2f;%.2f;%.2f;%.4lf;%.4lf;%c%c%c%c%c%c;%.0lf;%.4lf\r\n", 
+            err = fprintf (f, "%.2f;%.2f;%.2f;%.2f;%.2f;%.2f;%.2f;%.6lf;%.6lf;%c%c%c%c%c%c;%.0lf;%.4lf\r\n", 
                         acce[0], acce[1], acce[2],
+                        gyro[0], gyro[1], gyro[2],
                         temperatura, 
                         dadosDoGPS.latitude, dadosDoGPS.longitude,
                         dadosDoGPS.date[0], dadosDoGPS.date[1], dadosDoGPS.date[2], dadosDoGPS.date[3], dadosDoGPS.date[4], dadosDoGPS.date[5],
@@ -542,8 +586,9 @@ void escrever_no_arquivo () {
             if (err < 0) {
                 wait_ms (500);
                 semaforo_acessar_gps.acquire ();        
-                err = fprintf (f, "%.2f;%.2f;%.2f;%.2f;%.4lf;%.4lf;%c%c%c%c%c%c;%.0lf;%.4lf\r\n", 
+                err = fprintf (f, "%.2f;%.2f;%.2f;%.2f;%.2f;%.2f;%.2f;%.6lf;%.6lf;%c%c%c%c%c%c;%.0lf;%.4lf\r\n", 
                         acce[0], acce[1], acce[2],
+                        gyro[0], gyro[1], gyro[2],
                         temperatura, 
                         dadosDoGPS.latitude, dadosDoGPS.longitude,
                         dadosDoGPS.date[0], dadosDoGPS.date[1], dadosDoGPS.date[2], dadosDoGPS.date[3], dadosDoGPS.date[4], dadosDoGPS.date[5],
@@ -552,14 +597,15 @@ void escrever_no_arquivo () {
                 semaforo_acessar_gps.release ();
                 if (err < 0) {
                     fclose (f);
-                    fs.unmount ();
                     wait (1);
+                    printf ("Falha ao gravar. Cartão não encontrado ou memória cheia.\r\n");
                     continue; 
                 }       
             }
             semaforo_acessar_gps.acquire ();
-            printf ("A1: %.2f; A2: %.2f; A3: %.2f; Temp: %.2f; Lat: %lf; Long: %lf; Vel: %lf; Dat: %c%c%c%c%c%c; Tempo: %.0lf\r\n\n", 
+            printf ("A1: %.2f; A2: %.2f; A3: %.2f;G1: %.2f; G2: %.2f; G3: %.2f; Temp: %.2f; Lat: %lf; Long: %lf; Vel: %lf; Dat: %c%c%c%c%c%c; Tempo: %.0lf\r\n\n", 
                     acce[0], acce[1], acce[2],
+                    gyro[0], gyro[1], gyro[2], 
                     temperatura,
                     dadosDoGPS.latitude, dadosDoGPS.longitude,
                     dadosDoGPS.speed,
@@ -572,8 +618,6 @@ void escrever_no_arquivo () {
 
         // Close the file which also flushes any cached writes    
         fclose (f);        
-        // Tidy up    
-        fs.unmount ();
         //Espera por 1000 ms (gravação a cada 1 segundo aproximadamente)
         wait_ms (1000);
     }    
@@ -721,9 +765,9 @@ static void lora_event_handler (lorawan_event_t event) {
  * Adquire dados do GPS
  *----------------------------------------------------------------------------------------------------------------------
  */
-void adquirirDadosDoGPS () {
+void adquirirDadosDoGPS (void) {
     char c;
-    char cDataBuffer[500];
+    char cDataBuffer[200];
     while (true) {
         if (gps.readable ()) {
             if (gps.getc () == '$') { // Espera um $ (Identifica o inicio de um mensagem)
@@ -733,8 +777,7 @@ void adquirirDadosDoGPS () {
                         semaforo_acessar_gps.acquire ();
                         parse (cDataBuffer, i, &dadosDoGPS);
                         semaforo_acessar_gps.release ();
-                        i = sizeof (cDataBuffer);
-                        
+                        i = sizeof (cDataBuffer);                        
                     } else {
                         cDataBuffer[i] = c;
                     }                
@@ -742,4 +785,156 @@ void adquirirDadosDoGPS () {
             } 
         }
     }
+    return;
+}
+
+void calibracao (void) {
+    //printf ("Calibrando...\r\n\n");
+    float acceCalib[3];
+    bool controle = true;
+
+    while (true) {
+        ark.getAccelero (acceCalib);
+        //printf("Acce0=%f,Acce1=%f,Acce2=%f\r\n\n", acceCalib[0], acceCalib[1], acceCalib[2]);
+        if (acceCalib[2] <= 7.5) {
+            ledPouco = 1; // LED is OFF
+            ledMedio = 0; // LED is OFF
+            ledOkay = 0; // LED is ON            
+        } else if (acceCalib[2] > 7.9 && acceCalib[2] < 10.7) {
+            ledPouco = 0; // LED is ON
+            ledMedio = 1; // LED is OFF
+            ledOkay = 0; // LED is OFF 
+        } else if (acceCalib[2] >= 10.8) {
+            ledPouco = 0; // LED is OFF
+            ledMedio = 0; // LED is ON
+            ledOkay = 1; // LED is OFF
+            /*wait_ms (2500);
+            ark.getAccelero (acceCalib);
+            printf("Acce0=%f,Acce1=%f,Acce2=%f\r\n\n", acceCalib[0], acceCalib[1], acceCalib[2]);
+            if (acceCalib[2] >= 10.8) {
+                controle = false;
+                ledOkay = 0;
+                wait_ms (500);
+                ledOkay = 1;
+                wait_ms (500);
+                ledOkay = 0;
+                wait_ms (500);
+                ledOkay = 1;
+                wait_ms (500);
+                ledOkay = 0;
+            }*/
+        }
+        wait_ms (700);
+    }  
+    return;
+}
+
+/**
+ *----------------------------------------------------------------------------------------------------------------------
+ * Controla os arquivos do SD
+ *----------------------------------------------------------------------------------------------------------------------
+ */
+int controleDeGravacao (char *novoNomeDeArquivo) {
+
+    FILE *arq;
+    arq = fopen ("/fs/controle/controle.txt","r");
+    if (arq == NULL) {
+        arq = fopen ("/fs/controle/controle.txt","w");
+        if (arq == NULL) {            
+            printf ("Erro!\n");
+            wait (1);
+            return 1;
+        } 
+        fclose (arq);
+        arq = fopen ("/fs/controle/controle.txt","r");       
+    }
+    
+    char ajuste[2];
+    char texto[9];
+    int tamanho;
+    int err = 0;
+
+    fseek (arq, 0, SEEK_END);
+    tamanho = ftell (arq);
+    fseek (arq, (tamanho - 10), SEEK_SET);
+    fgets (texto, 9, arq);
+    fclose (arq);
+    printf ("\r\nLido: %s \r\n", texto);
+
+    semaforo_acessar_gps.acquire ();
+    /*printf ("\r\nGPS: %d%d%d%d%d%d\r\n", dadosDoGPS.date[4] - 48, dadosDoGPS.date[5] - 48, dadosDoGPS.date[2] - 48,
+                                         dadosDoGPS.date[3] - 48, dadosDoGPS.date[0] - 48, dadosDoGPS.date[1] - 48);*/
+    semaforo_acessar_gps.release ();
+    ajuste[0] = texto[6]; ajuste[1] = texto[7];
+
+    arq = fopen ("/fs/controle/controle.txt","a+");
+
+    semaforo_acessar_gps.acquire ();
+    if (dadosDoGPS.date[4] == texto[0] && dadosDoGPS.date[5] == texto[1] && dadosDoGPS.date[2] == texto[2] &&
+        dadosDoGPS.date[3] == texto[3] && dadosDoGPS.date[0] == texto[4] && dadosDoGPS.date[1] == texto[5] ) {
+        
+        semaforo_acessar_gps.release ();
+
+        printf ("Mesma data!\r\n");
+
+        if (texto[7] == 'Z') {
+            if (texto[6] == 'Z') {
+                printf ("\r\nErro 2! (Limite de arquivos atingido)\r\n");
+                printf ("Salve os arquivos, e remova-os do cartao.\r\n");
+                printf ("Feito isso, coloque o cartao e reinicie a placa.\r\n\n");
+                while (1);
+            } else {
+                ajuste[1] = 'A';
+            ajuste[0] += 1;
+            }
+        } else {
+            ajuste[1] += 1;
+        }
+        fseek (arq, 0, SEEK_END);
+
+        err = fprintf(arq, "%d%d%d%d%d%d%c%c\r\n",
+                (texto[0] - 48), (texto[1] - 48), (texto[2] - 48),
+                (texto[3] - 48), (texto[4] - 48), (texto[5] - 48),
+                ajuste[0], ajuste[1]);
+        if (err < 0) {
+            fclose (arq);
+            printf ("Falha ao gravar. Cartão não encontrado ou memória cheia.\r\n");
+            return 1;
+        }
+        
+          novoNomeDeArquivo[0] = texto[0] ; novoNomeDeArquivo[1] = texto[1] ;
+          novoNomeDeArquivo[2] = texto[2] ; novoNomeDeArquivo[3] = texto[3] ;
+          novoNomeDeArquivo[4] = texto[4] ; novoNomeDeArquivo[5] = texto[5] ;
+          novoNomeDeArquivo[6] = ajuste[0]; novoNomeDeArquivo[7] = ajuste[1];
+
+    } else {
+        semaforo_acessar_gps.release ();
+        fseek (arq, 0, SEEK_END);
+        printf ("Data diferente!\r\n");
+
+        semaforo_acessar_gps.acquire ();
+        fprintf (arq, "%d%d%d%d%d%d%c%c\r\n", 
+                 dadosDoGPS.date[4] - 48,  dadosDoGPS.date[5] - 48,
+                 dadosDoGPS.date[2] - 48,  dadosDoGPS.date[3] - 48,
+                 dadosDoGPS.date[0] - 48,  dadosDoGPS.date[1] - 48,
+                 'A', 'A');
+        semaforo_acessar_gps.release ();
+
+        if (err < 0) {
+            fclose (arq);
+            printf ("Falha ao gravar. Cartão não encontrado ou memória cheia.\r\n");
+            return 1;
+        }
+        
+        semaforo_acessar_gps.acquire ();
+        novoNomeDeArquivo[0] = dadosDoGPS.date[4] ; novoNomeDeArquivo[1] = dadosDoGPS.date[5] ;
+        novoNomeDeArquivo[2] = dadosDoGPS.date[2] ; novoNomeDeArquivo[3] = dadosDoGPS.date[3] ;
+        novoNomeDeArquivo[4] = dadosDoGPS.date[0] ; novoNomeDeArquivo[5] = dadosDoGPS.date[1] ;
+        novoNomeDeArquivo[6] = 'A'; novoNomeDeArquivo[7] = 'A';
+        semaforo_acessar_gps.release ();         
+    }
+    
+    fclose (arq);
+
+    return 0;
 }

@@ -455,7 +455,7 @@ int main (void) {
     //------------------------------------------------------------------------------------------------------------------
     //-- PASSO 9: Faz o manipulador de eventos disparar para sempre
     //------------------------------------------------------------------------------------------------------------------    
-    //ev_queue.dispatch_forever ();
+    ev_queue.dispatch_forever ();
 
 }
 
@@ -795,7 +795,7 @@ void calibracao (void) {
 
     while (true) {
         ark.getAccelero (acceCalib);
-        //printf("Acce0=%f,Acce1=%f,Acce2=%f\r\n\n", acceCalib[0], acceCalib[1], acceCalib[2]);
+
         if (acceCalib[2] <= 7.5) {
             ledPouco = 1; // LED is OFF
             ledMedio = 0; // LED is OFF
@@ -808,21 +808,6 @@ void calibracao (void) {
             ledPouco = 0; // LED is OFF
             ledMedio = 0; // LED is ON
             ledOkay = 1; // LED is OFF
-            /*wait_ms (2500);
-            ark.getAccelero (acceCalib);
-            printf("Acce0=%f,Acce1=%f,Acce2=%f\r\n\n", acceCalib[0], acceCalib[1], acceCalib[2]);
-            if (acceCalib[2] >= 10.8) {
-                controle = false;
-                ledOkay = 0;
-                wait_ms (500);
-                ledOkay = 1;
-                wait_ms (500);
-                ledOkay = 0;
-                wait_ms (500);
-                ledOkay = 1;
-                wait_ms (500);
-                ledOkay = 0;
-            }*/
         }
         wait_ms (700);
     }  
@@ -861,10 +846,6 @@ int controleDeGravacao (char *novoNomeDeArquivo) {
     fclose (arq);
     printf ("\r\nLido: %s \r\n", texto);
 
-    semaforo_acessar_gps.acquire ();
-    /*printf ("\r\nGPS: %d%d%d%d%d%d\r\n", dadosDoGPS.date[4] - 48, dadosDoGPS.date[5] - 48, dadosDoGPS.date[2] - 48,
-                                         dadosDoGPS.date[3] - 48, dadosDoGPS.date[0] - 48, dadosDoGPS.date[1] - 48);*/
-    semaforo_acessar_gps.release ();
     ajuste[0] = texto[6]; ajuste[1] = texto[7];
 
     arq = fopen ("/fs/controle/controle.txt","a+");

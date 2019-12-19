@@ -2,13 +2,13 @@
  * carro.cpp       v0.0        08-10-2019 
  *
  * Orientador: Elias Teodoro da Silva Junior
- * Autores: Felipe Moura de Castro e Joao Bruno Costa Cruz,
+ * Autor: Joao Bruno Costa Cruz
  * Instituto Federal de Educação, Ciência e Tecnologia do Ceará (IFCE) - Campus Fortaleza
  *
  * @Opensource
  * Este código-fonte pode ser utilizado, copiado, estudado, modificado e redistribuído sem restrições.
  *
- * Copyright (c) 2019, Felipe Moura de Castro e Joao Bruno Costa Cruz.
+ * Copyright (c) 2019, Joao Bruno Costa Cruz.
  *
  */
 
